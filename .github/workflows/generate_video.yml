@@ -1,0 +1,65 @@
+name: Auto Video Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Chủ đề video bạn muốn tạo'
+        required: true
+        default: '5 sự thật thú vị về vũ trụ có thể bạn chưa biết'
+      voice:
+        description: 'Giọng đọc Edge-TTS'
+        required: true
+        type: choice
+        default: 'vi-VN-HoaiMyNeural'
+        options:
+          - vi-VN-HoaiMyNeural
+          - vi-VN-NamMinhNeural
+
+jobs:
+  render-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install FFmpeg, ImageMagick and Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-dejavu-core imagemagick
+          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml || true
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Video Generation Pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          # Truyền input qua biến môi trường để tránh chèn lệnh shell từ ô nhập
+          TOPIC: ${{ github.event.inputs.topic }}
+          VOICE: ${{ github.event.inputs.voice }}
+        run: python main.py --topic "$TOPIC" --voice "$VOICE"
+
+      - name: Upload Rendered Video to Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video-${{ github.run_number }}
+          path: |
+            output/*.mp4
+            output/*.srt
+            output/*.json
+          if-no-files-found: warn
+          retention-days: 14
